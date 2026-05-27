@@ -1,0 +1,112 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="860" viewBox="0 0 1000 860">
+<rect width="100%" height="100%" fill="white" />
+<text x="500.0" y="36" font-size="22" font-family="Arial, sans-serif" font-weight="bold" text-anchor="middle">Pairwise Distance Timing</text>
+<text x="500.0" y="56" font-size="16" font-family="Arial, sans-serif" font-weight="bold" text-anchor="middle">Total time</text>
+<line x1="115" y1="260" x2="960" y2="260" stroke="#222" />
+<line x1="115" y1="80" x2="115" y2="260" stroke="#222" />
+<line x1="115" y1="80" x2="960" y2="80" stroke="#ddd" />
+<text x="105" y="84" font-size="11" font-family="Arial, sans-serif" font-weight="normal" text-anchor="end">8750</text>
+<line x1="115" y1="125.0" x2="960" y2="125.0" stroke="#ddd" />
+<text x="105" y="129.0" font-size="11" font-family="Arial, sans-serif" font-weight="normal" text-anchor="end">6564</text>
+<line x1="115" y1="170.0" x2="960" y2="170.0" stroke="#ddd" />
+<text x="105" y="174.0" font-size="11" font-family="Arial, sans-serif" font-weight="normal" text-anchor="end">4378</text>
+<line x1="115" y1="215.0" x2="960" y2="215.0" stroke="#ddd" />
+<text x="105" y="219.0" font-size="11" font-family="Arial, sans-serif" font-weight="normal" text-anchor="end">2193</text>
+<line x1="115" y1="260" x2="960" y2="260" stroke="#ddd" />
+<text x="105" y="264" font-size="11" font-family="Arial, sans-serif" font-weight="normal" text-anchor="end">7</text>
+<line x1="115.0" y1="260" x2="115.0" y2="265" stroke="#222" />
+<text x="115.0" y="280" font-size="11" font-family="Arial, sans-serif" font-weight="normal" text-anchor="middle">1000</text>
+<line x1="196.7741935483871" y1="260" x2="196.7741935483871" y2="265" stroke="#222" />
+<text x="196.7741935483871" y="280" font-size="11" font-family="Arial, sans-serif" font-weight="normal" text-anchor="middle">4000</text>
+<line x1="305.80645161290323" y1="260" x2="305.80645161290323" y2="265" stroke="#222" />
+<text x="305.80645161290323" y="280" font-size="11" font-family="Arial, sans-serif" font-weight="normal" text-anchor="middle">8000</text>
+<line x1="414.83870967741933" y1="260" x2="414.83870967741933" y2="265" stroke="#222" />
+<text x="414.83870967741933" y="280" font-size="11" font-family="Arial, sans-serif" font-weight="normal" text-anchor="middle">1.2e+04</text>
+<line x1="523.8709677419355" y1="260" x2="523.8709677419355" y2="265" stroke="#222" />
+<text x="523.8709677419355" y="280" font-size="11" font-family="Arial, sans-serif" font-weight="normal" text-anchor="middle">1.6e+04</text>
+<line x1="741.9354838709677" y1="260" x2="741.9354838709677" y2="265" stroke="#222" />
+<text x="741.9354838709677" y="280" font-size="11" font-family="Arial, sans-serif" font-weight="normal" text-anchor="middle">2.4e+04</text>
+<line x1="960.0" y1="260" x2="960.0" y2="265" stroke="#222" />
+<text x="960.0" y="280" font-size="11" font-family="Arial, sans-serif" font-weight="normal" text-anchor="middle">3.2e+04</text>
+<polyline points="115.0,260.0 196.7741935483871,257.32563193411875 305.80645161290323,248.97723893400433 414.83870967741933,234.76747111975294 523.8709677419355,215.9748370124671 741.9354838709677,158.98753288344963 960.0,80.0" fill="none" stroke="#276fbf" stroke-width="2.5" />
+<circle cx="115.0" cy="260.0" r="4" fill="#276fbf" />
+<circle cx="196.7741935483871" cy="257.32563193411875" r="4" fill="#276fbf" />
+<circle cx="305.80645161290323" cy="248.97723893400433" r="4" fill="#276fbf" />
+<circle cx="414.83870967741933" cy="234.76747111975294" r="4" fill="#276fbf" />
+<circle cx="523.8709677419355" cy="215.9748370124671" r="4" fill="#276fbf" />
+<circle cx="741.9354838709677" cy="158.98753288344963" r="4" fill="#276fbf" />
+<circle cx="960.0" cy="80.0" r="4" fill="#276fbf" />
+<text x="500.0" y="302" font-size="13" font-family="Arial, sans-serif" font-weight="normal" text-anchor="middle">count</text>
+<text x="500.0" y="331" font-size="16" font-family="Arial, sans-serif" font-weight="bold" text-anchor="middle">Time per element</text>
+<line x1="115" y1="535" x2="960" y2="535" stroke="#222" />
+<line x1="115" y1="355" x2="115" y2="535" stroke="#222" />
+<line x1="115" y1="355" x2="960" y2="355" stroke="#ddd" />
+<text x="105" y="359" font-size="11" font-family="Arial, sans-serif" font-weight="normal" text-anchor="end">0.2734</text>
+<line x1="115" y1="400.0" x2="960" y2="400.0" stroke="#ddd" />
+<text x="105" y="404.0" font-size="11" font-family="Arial, sans-serif" font-weight="normal" text-anchor="end">0.2068</text>
+<line x1="115" y1="445.0" x2="960" y2="445.0" stroke="#ddd" />
+<text x="105" y="449.0" font-size="11" font-family="Arial, sans-serif" font-weight="normal" text-anchor="end">0.1402</text>
+<line x1="115" y1="490.0" x2="960" y2="490.0" stroke="#ddd" />
+<text x="105" y="494.0" font-size="11" font-family="Arial, sans-serif" font-weight="normal" text-anchor="end">0.07361</text>
+<line x1="115" y1="535" x2="960" y2="535" stroke="#ddd" />
+<text x="105" y="539" font-size="11" font-family="Arial, sans-serif" font-weight="normal" text-anchor="end">0.007</text>
+<line x1="115.0" y1="535" x2="115.0" y2="540" stroke="#222" />
+<text x="115.0" y="555" font-size="11" font-family="Arial, sans-serif" font-weight="normal" text-anchor="middle">1000</text>
+<line x1="196.7741935483871" y1="535" x2="196.7741935483871" y2="540" stroke="#222" />
+<text x="196.7741935483871" y="555" font-size="11" font-family="Arial, sans-serif" font-weight="normal" text-anchor="middle">4000</text>
+<line x1="305.80645161290323" y1="535" x2="305.80645161290323" y2="540" stroke="#222" />
+<text x="305.80645161290323" y="555" font-size="11" font-family="Arial, sans-serif" font-weight="normal" text-anchor="middle">8000</text>
+<line x1="414.83870967741933" y1="535" x2="414.83870967741933" y2="540" stroke="#222" />
+<text x="414.83870967741933" y="555" font-size="11" font-family="Arial, sans-serif" font-weight="normal" text-anchor="middle">1.2e+04</text>
+<line x1="523.8709677419355" y1="535" x2="523.8709677419355" y2="540" stroke="#222" />
+<text x="523.8709677419355" y="555" font-size="11" font-family="Arial, sans-serif" font-weight="normal" text-anchor="middle">1.6e+04</text>
+<line x1="741.9354838709677" y1="535" x2="741.9354838709677" y2="540" stroke="#222" />
+<text x="741.9354838709677" y="555" font-size="11" font-family="Arial, sans-serif" font-weight="normal" text-anchor="middle">2.4e+04</text>
+<line x1="960.0" y1="535" x2="960.0" y2="540" stroke="#222" />
+<text x="960.0" y="555" font-size="11" font-family="Arial, sans-serif" font-weight="normal" text-anchor="middle">3.2e+04</text>
+<polyline points="115.0,535.0 196.7741935483871,516.6073187895848 305.80645161290323,493.9247009148487 414.83870967741933,470.3356790992259 523.8709677419355,449.1421534130894 741.9354838709677,401.42083040112595 960.0,355.0" fill="none" stroke="#276fbf" stroke-width="2.5" />
+<circle cx="115.0" cy="535.0" r="4" fill="#276fbf" />
+<circle cx="196.7741935483871" cy="516.6073187895848" r="4" fill="#276fbf" />
+<circle cx="305.80645161290323" cy="493.9247009148487" r="4" fill="#276fbf" />
+<circle cx="414.83870967741933" cy="470.3356790992259" r="4" fill="#276fbf" />
+<circle cx="523.8709677419355" cy="449.1421534130894" r="4" fill="#276fbf" />
+<circle cx="741.9354838709677" cy="401.42083040112595" r="4" fill="#276fbf" />
+<circle cx="960.0" cy="355.0" r="4" fill="#276fbf" />
+<text x="500.0" y="577" font-size="13" font-family="Arial, sans-serif" font-weight="normal" text-anchor="middle">count</text>
+<text x="500.0" y="606" font-size="16" font-family="Arial, sans-serif" font-weight="bold" text-anchor="middle">Time per distance calculation (time / count^2)</text>
+<line x1="115" y1="810" x2="960" y2="810" stroke="#222" />
+<line x1="115" y1="630" x2="115" y2="810" stroke="#222" />
+<line x1="115" y1="630" x2="960" y2="630" stroke="#ddd" />
+<text x="105" y="634" font-size="11" font-family="Arial, sans-serif" font-weight="normal" text-anchor="end">8.56e-06</text>
+<line x1="115" y1="675.0" x2="960" y2="675.0" stroke="#ddd" />
+<text x="105" y="679.0" font-size="11" font-family="Arial, sans-serif" font-weight="normal" text-anchor="end">8.17e-06</text>
+<line x1="115" y1="720.0" x2="960" y2="720.0" stroke="#ddd" />
+<text x="105" y="724.0" font-size="11" font-family="Arial, sans-serif" font-weight="normal" text-anchor="end">7.78e-06</text>
+<line x1="115" y1="765.0" x2="960" y2="765.0" stroke="#ddd" />
+<text x="105" y="769.0" font-size="11" font-family="Arial, sans-serif" font-weight="normal" text-anchor="end">7.39e-06</text>
+<line x1="115" y1="810" x2="960" y2="810" stroke="#ddd" />
+<text x="105" y="814" font-size="11" font-family="Arial, sans-serif" font-weight="normal" text-anchor="end">7e-06</text>
+<line x1="115.0" y1="810" x2="115.0" y2="815" stroke="#222" />
+<text x="115.0" y="830" font-size="11" font-family="Arial, sans-serif" font-weight="normal" text-anchor="middle">1000</text>
+<line x1="196.7741935483871" y1="810" x2="196.7741935483871" y2="815" stroke="#222" />
+<text x="196.7741935483871" y="830" font-size="11" font-family="Arial, sans-serif" font-weight="normal" text-anchor="middle">4000</text>
+<line x1="305.80645161290323" y1="810" x2="305.80645161290323" y2="815" stroke="#222" />
+<text x="305.80645161290323" y="830" font-size="11" font-family="Arial, sans-serif" font-weight="normal" text-anchor="middle">8000</text>
+<line x1="414.83870967741933" y1="810" x2="414.83870967741933" y2="815" stroke="#222" />
+<text x="414.83870967741933" y="830" font-size="11" font-family="Arial, sans-serif" font-weight="normal" text-anchor="middle">1.2e+04</text>
+<line x1="523.8709677419355" y1="810" x2="523.8709677419355" y2="815" stroke="#222" />
+<text x="523.8709677419355" y="830" font-size="11" font-family="Arial, sans-serif" font-weight="normal" text-anchor="middle">1.6e+04</text>
+<line x1="741.9354838709677" y1="810" x2="741.9354838709677" y2="815" stroke="#222" />
+<text x="741.9354838709677" y="830" font-size="11" font-family="Arial, sans-serif" font-weight="normal" text-anchor="middle">2.4e+04</text>
+<line x1="960.0" y1="810" x2="960.0" y2="815" stroke="#222" />
+<text x="960.0" y="830" font-size="11" font-family="Arial, sans-serif" font-weight="normal" text-anchor="middle">3.2e+04</text>
+<polyline points="115.0,810.0 196.7741935483871,630.40071237756 305.80645161290323,639.7773820124667 414.83870967741933,630.0 523.8709677419355,650.6867764915405 741.9354838709677,633.4060552092608 960.0,631.7080365093498" fill="none" stroke="#276fbf" stroke-width="2.5" />
+<circle cx="115.0" cy="810.0" r="4" fill="#276fbf" />
+<circle cx="196.7741935483871" cy="630.40071237756" r="4" fill="#276fbf" />
+<circle cx="305.80645161290323" cy="639.7773820124667" r="4" fill="#276fbf" />
+<circle cx="414.83870967741933" cy="630.0" r="4" fill="#276fbf" />
+<circle cx="523.8709677419355" cy="650.6867764915405" r="4" fill="#276fbf" />
+<circle cx="741.9354838709677" cy="633.4060552092608" r="4" fill="#276fbf" />
+<circle cx="960.0" cy="631.7080365093498" r="4" fill="#276fbf" />
+<text x="500.0" y="852" font-size="13" font-family="Arial, sans-serif" font-weight="normal" text-anchor="middle">count</text>
+</svg>
