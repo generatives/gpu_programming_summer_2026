@@ -4,24 +4,10 @@
 #include <cassert>
 #include <vector>
 #include <iomanip>
-#include "buffers.h"
 
 struct Sphere {
-    float4 data; // x, y, z, radius
-
-    Sphere() = default;
-
-    __host__ __device__
-    Sphere(float radius, float3 position)
-        : data{position.x, position.y, position.z, radius} {}
-
-    __host__ __device__
-    float radius() const { return data.w; }
-
-    __host__ __device__
-    float3 position() const {
-        return make_float3(data.x, data.y, data.z);
-    }
+  float radius;
+  float3 position;
 };
 
 __device__ float2 operator-(const float2 &a, const float2 &b) {
@@ -33,10 +19,10 @@ __device__ float3 operator-(const float3 &a, const float3 &b) {
 }
 
 __device__ bool spheres_collide(Sphere a, Sphere b) {
-  float boundary = a.radius() + b.radius();
+  float boundary = a.radius + b.radius;
   float boundarySq = boundary * boundary;
 
-  float3 pos_diff = a.position() - b.position();
+  float3 pos_diff = a.position - b.position;
   float distanceSq = (pos_diff.x) * (pos_diff.x) +
     (pos_diff.y) * (pos_diff.y) +
     (pos_diff.z) * (pos_diff.z);
@@ -45,23 +31,22 @@ __device__ bool spheres_collide(Sphere a, Sphere b) {
 }
  
 __global__
-void check_collisions(
-  int b, int j, int e,
-  const Sphere* __restrict__ robots,
-  const Sphere*__restrict__ obstacles,
-  uint8_t*__restrict__ collides)
+void check_collisions(int b, int j, int e, Sphere *robots, Sphere *obstacles, uint8_t *collides)
 {
-  int robot = blockIdx.y;
-  int sphere = blockIdx.z;
-  int obstacle = blockIdx.x * blockDim.x + threadIdx.x;
+  int index = blockIdx.x * blockDim.x + threadIdx.x;
+  int stride = blockDim.x * gridDim.x;
+  int num_checks = b * j * e;
+  for (int i = index; i < num_checks; i += stride) {
+    int robot = i / (j * e);
+    int sphere = (i % (j * e)) / e;
+    int obstacle = i % e;
+    
+    Sphere robot_sphere = robots[robot * j + sphere];
+    Sphere obstacle_sphere = obstacles[obstacle];
 
-  if (obstacle >= e) return;
-
-  Sphere robot_sphere = robots[robot * j + sphere];
-  Sphere obstacle_sphere = obstacles[obstacle];
-
-  if (spheres_collide(robot_sphere, obstacle_sphere)) {
+    if(spheres_collide(robot_sphere, obstacle_sphere)) {
       collides[robot] = 1;
+    }
   }
 }
 
@@ -92,6 +77,65 @@ void draw_cubes_in_grid(int2 start_grid_idx, int2 end_grid_idx, std::vector<Sphe
     add_cube(position, radius, spheres);
   }
 }
+
+template <typename T>
+struct Buffers {
+  T* host;
+  T* device;
+  size_t count = 0;
+
+  Buffers() = default;
+
+  explicit Buffers(size_t n) : count(n) {
+    cudaMalloc(&device, n * sizeof(T));
+    host = new T[n];
+  }
+
+  ~Buffers() {
+    if (device) cudaFree(device);
+    if (host) delete[] host;
+  }
+
+  Buffers(const Buffers&) = delete;
+  Buffers& operator=(const Buffers&) = delete;
+
+  Buffers(Buffers&& other) noexcept
+    : host(other.host), device(other.device), count(other.count) {
+    other.host = nullptr;
+    other.device = nullptr;
+    other.count = 0;
+  }
+
+  Buffers& operator=(Buffers&& other) noexcept {
+    if (this != &other) {
+      if (device) cudaFree(device);
+      if (host) delete[] host;
+
+      device = other.device;
+      host = other.host;
+      count = other.count;
+
+      other.device = nullptr;
+      other.host = nullptr;
+      other.count = 0;
+    }
+    return *this;
+  }
+
+  void copy_to_device() {
+    cudaMemcpy(device,
+      host,
+      count * sizeof(T),
+      cudaMemcpyHostToDevice);
+  }
+
+  void copy_to_host() {
+    cudaMemcpy(host,
+      device,
+      count * sizeof(T),
+      cudaMemcpyDeviceToHost);
+  }
+};
 
 bool check_for_true(uint8_t *values, int start, int end) {
   for(int i = start; i < end; i++) {
@@ -188,15 +232,16 @@ void run_program() {
   std::fill_n(collides.host, collides.count, 0);
   collides.copy_to_device();
 
-  dim3 block(256);
-  dim3 grid((e + block.x - 1) / block.x, b, j);
+  int num_compares = b * j * e;
 
-  check_collisions<<<grid, block>>>(
-      b, j, e,
-      robot_spheres.device,
-      obstacle_spheres.device,
-      collides.device
-  );
+  int blockSize = 256;
+  int gridSize = (int)std::ceil((float)num_compares / blockSize);
+  //int gridSize = 1024;
+
+  //std::cout << "Block size: " << blockSize << "\n";
+  //std::cout << "Grid size: " << gridSize << "\n";
+
+  check_collisions<<<gridSize, blockSize>>>(b, j, e, robot_spheres.device, obstacle_spheres.device, collides.device);
 
   collides.copy_to_host();
 
@@ -210,13 +255,13 @@ int main(int argc, char* argv[])
   //int N = std::stoi(argv[1]);
 
   // warm up
-  for(int i = 0; i < 0; i++) {
+  for(int i = 0; i < 3; i++) {
     run_program();
   }
 
   auto start = std::chrono::steady_clock::now();
    
-  int numRuns = 1;
+  int numRuns = 5;
   for(int i = 0; i < numRuns; i++) {
     run_program();
   }
