@@ -6,8 +6,6 @@
 #include <iomanip>
 #include "buffers.h"
 
-const int OBSTACLES_PER_THREAD = 8;
-
 struct Sphere {
     float4 data; // x, y, z, radius
 
@@ -54,21 +52,38 @@ void check_collisions(
   uint8_t*__restrict__ collides)
 {
   int sphere = blockIdx.x * blockDim.x + threadIdx.x;
+  int localSphere = threadIdx.x;
   int robot = blockIdx.y * blockDim.y + threadIdx.y;
-  int baseObstacle = (blockIdx.z * blockDim.z + threadIdx.z) * OBSTACLES_PER_THREAD;
+  int localRobot = threadIdx.y;
+  int obstacle = blockIdx.z * blockDim.z + threadIdx.z;
+  int localObstacle = threadIdx.z;
 
-  if (robot < b && sphere < j && baseObstacle < e) {
+  __shared__ int8_t block_collides[32];
+  __shared__ Sphere shared_obstacle;
+
+  if (localSphere == 0 && localObstacle == 0) {
+    block_collides[localRobot] = 0;
+  }
+
+  if (localRobot == 0 && localSphere == 0 && localObstacle == 0) {
+    shared_obstacle = obstacles[obstacle];
+  }
+
+  __syncthreads();
+
+  if (robot < b && sphere < j && obstacle < e) {
     Sphere robot_sphere = robots[robot * j + sphere];
+    Sphere obstacle_sphere = shared_obstacle;
 
-    int8_t local_collides = 0;
-    for(int obstacle = baseObstacle; obstacle < baseObstacle + OBSTACLES_PER_THREAD; obstacle++) {
-      Sphere obstacle_sphere = obstacles[obstacle];
-      local_collides |= spheres_collide(robot_sphere, obstacle_sphere);
+    if (spheres_collide(robot_sphere, obstacle_sphere)) {
+        block_collides[localRobot] = 1;
     }
+  }
 
-    if (local_collides == 1) {
-      collides[robot] = 1;
-    }
+  __syncthreads();
+  
+  if (localSphere == 0 && localObstacle == 0 && robot < b && block_collides[localRobot] == 1) {
+    collides[robot] = 1;
   }
 }
 
@@ -109,7 +124,7 @@ bool check_for_true(uint8_t *values, int start, int end) {
   return false;
 }
 
-int run_program() {
+void run_program() {
 
   int map_dim = 9;
   uint8_t map[] = {
@@ -196,9 +211,7 @@ int run_program() {
   collides.copy_to_device();
 
   dim3 block(8, 32, 1);
-  dim3 grid(1, (b + block.y - 1) / block.y, (e + OBSTACLES_PER_THREAD - 1) / OBSTACLES_PER_THREAD);
-
-  auto start = std::chrono::steady_clock::now();
+  dim3 grid(1, (b + block.y - 1) / block.y, e);
 
   check_collisions<<<grid, block>>>(
       b, j, e,
@@ -209,14 +222,9 @@ int run_program() {
 
   collides.copy_to_host();
 
-  auto end = std::chrono::steady_clock::now();
-  auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-
   assert(check_for_true(collides.host, 0, robot_path_ranges[0]));
   assert(!check_for_true(collides.host, robot_path_ranges[0], robot_path_ranges[1]));
   assert(check_for_true(collides.host, robot_path_ranges[1], robot_path_ranges[2]));
-
-  return duration.count();
 }
  
 int main(int argc, char* argv[])
@@ -224,17 +232,20 @@ int main(int argc, char* argv[])
   //int N = std::stoi(argv[1]);
 
   // warm up
-  for(int i = 0; i < 3; i++) {
+  for(int i = 0; i < 0; i++) {
     run_program();
   }
 
-  int totalMicroseconds = 0;
-  int numRuns = 5;
+  auto start = std::chrono::steady_clock::now();
+   
+  int numRuns = 1;
   for(int i = 0; i < numRuns; i++) {
-    totalMicroseconds += run_program();
+    run_program();
   }
 
-  float averageMicroseconds = (float)totalMicroseconds / numRuns;
+  auto end = std::chrono::steady_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+  float averageMicroseconds = (float)duration.count() / numRuns;
 
   std::cout << "Time taken: "<< std::fixed << std::setprecision(2) << averageMicroseconds << " microseconds\n";
 
