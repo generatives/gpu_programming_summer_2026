@@ -64,12 +64,7 @@ void check_collisions(
   int localRobot = threadIdx.y;
   int baseObstacle = (blockIdx.z * blockDim.z + threadIdx.z) * OBSTACLES_PER_THREAD;
 
-  __shared__ Sphere shared_robot_sphere[ROBOT_BLOCK_DIM][SPHERE_BLOCK_DIM];
   __shared__ Sphere shared_obstacles[OBSTACLES_PER_THREAD];
-
-  if(threadIdx.z == 0) {
-    shared_robot_sphere[localRobot][localSphere] = robots[robot * j + sphere];
-  }
 
   int load_obstacle_idx = localRobot * SPHERE_BLOCK_DIM + localSphere;
   if(load_obstacle_idx < OBSTACLES_PER_THREAD) {
@@ -79,8 +74,7 @@ void check_collisions(
   __syncthreads();
 
   if (robot < b && sphere < j && baseObstacle < e) {
-    Sphere robot_sphere = shared_robot_sphere[localRobot][localSphere];
-    //Sphere robot_sphere = robots[robot * j + sphere];
+    Sphere robot_sphere = robots[robot * j + sphere];
 
     int8_t local_collides = 0;
     for(int obstacle = 0; obstacle < OBSTACLES_PER_THREAD; obstacle++) {
