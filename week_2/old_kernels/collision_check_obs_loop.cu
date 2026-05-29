@@ -6,9 +6,7 @@
 #include <iomanip>
 #include "buffers.h"
 
-const int SPHERE_BLOCK_DIM = 8;
-const int ROBOT_BLOCK_DIM = 32;
-const int OBSTACLES_PER_THREAD = 32;
+const int OBSTACLES_PER_THREAD = 8;
 
 struct Sphere {
     float4 data; // x, y, z, radius
@@ -40,13 +38,10 @@ __device__ bool spheres_collide(Sphere a, Sphere b) {
   float boundary = a.radius() + b.radius();
   float boundarySq = boundary * boundary;
 
-  float diff_x = a.data.x - b.data.x;
-  float diff_y = a.data.y - b.data.y;
-  float diff_z = a.data.z - b.data.z;
-
-  float distanceSq = (diff_x) * (diff_x) +
-    (diff_y) * (diff_y) +
-    (diff_z) * (diff_z);
+  float3 pos_diff = a.position() - b.position();
+  float distanceSq = (pos_diff.x) * (pos_diff.x) +
+    (pos_diff.y) * (pos_diff.y) +
+    (pos_diff.z) * (pos_diff.z);
 
   return distanceSq < boundarySq;
 }
@@ -59,32 +54,15 @@ void check_collisions(
   uint8_t*__restrict__ collides)
 {
   int sphere = blockIdx.x * blockDim.x + threadIdx.x;
-  int localSphere = threadIdx.x;
   int robot = blockIdx.y * blockDim.y + threadIdx.y;
-  int localRobot = threadIdx.y;
   int baseObstacle = (blockIdx.z * blockDim.z + threadIdx.z) * OBSTACLES_PER_THREAD;
 
-  __shared__ Sphere shared_robot_sphere[ROBOT_BLOCK_DIM][SPHERE_BLOCK_DIM];
-  __shared__ Sphere shared_obstacles[OBSTACLES_PER_THREAD];
-
-  if(threadIdx.z == 0) {
-    shared_robot_sphere[localRobot][localSphere] = robots[robot * j + sphere];
-  }
-
-  int load_obstacle_idx = localRobot * SPHERE_BLOCK_DIM + localSphere;
-  if(load_obstacle_idx < OBSTACLES_PER_THREAD) {
-    shared_obstacles[load_obstacle_idx] = obstacles[baseObstacle + load_obstacle_idx];
-  } 
-
-  __syncthreads();
-
   if (robot < b && sphere < j && baseObstacle < e) {
-    Sphere robot_sphere = shared_robot_sphere[localRobot][localSphere];
-    //Sphere robot_sphere = robots[robot * j + sphere];
+    Sphere robot_sphere = robots[robot * j + sphere];
 
     int8_t local_collides = 0;
-    for(int obstacle = 0; obstacle < OBSTACLES_PER_THREAD; obstacle++) {
-      Sphere obstacle_sphere = shared_obstacles[obstacle];
+    for(int obstacle = baseObstacle; obstacle < baseObstacle + OBSTACLES_PER_THREAD; obstacle++) {
+      Sphere obstacle_sphere = obstacles[obstacle];
       local_collides |= spheres_collide(robot_sphere, obstacle_sphere);
     }
 
@@ -217,7 +195,7 @@ int run_program() {
   std::fill_n(collides.host, collides.count, 0);
   collides.copy_to_device();
 
-  dim3 block(SPHERE_BLOCK_DIM, ROBOT_BLOCK_DIM, 1);
+  dim3 block(8, 32, 1);
   dim3 grid(1, (b + block.y - 1) / block.y, (e + OBSTACLES_PER_THREAD - 1) / OBSTACLES_PER_THREAD);
 
   auto start = std::chrono::steady_clock::now();
