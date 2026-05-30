@@ -67,9 +67,10 @@ void check_collisions(
   __shared__ Sphere shared_obstacles[OBSTACLES_PER_THREAD];
 
   int load_obstacle_idx = localRobot * SPHERE_BLOCK_DIM + localSphere;
-  if(load_obstacle_idx < OBSTACLES_PER_THREAD) {
-    shared_obstacles[load_obstacle_idx] = obstacles[baseObstacle + load_obstacle_idx];
-  } 
+  int global_load_obstacle_idx = baseObstacle + load_obstacle_idx;
+  if (load_obstacle_idx < OBSTACLES_PER_THREAD && global_load_obstacle_idx < e) {
+      shared_obstacles[load_obstacle_idx] = obstacles[global_load_obstacle_idx];
+  }
 
   __syncthreads();
 
