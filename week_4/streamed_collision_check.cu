@@ -97,7 +97,7 @@ void score_paths(
   const uint8_t* __restrict__ collides,
   float_t*__restrict__ scores)
 {
-  for (int w = 0; w < 10000; w++) {
+  for (int w = 0; w < 1000; w++) {
     int path_idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (path_idx < num_paths) {
@@ -262,8 +262,10 @@ int run_program() {
   Buffers<uint8_t> collides(b);
   Buffers<float_t> scores(num_paths);
 
+  int num_batches = 20;
+
   cudaStream_t copy_in_stream, compute_collision_stream, compute_score_stream, copy_out_stream;
-  cudaEvent_t copy_in_done, compute_collision_done, compute_score_done, copy_out_done;
+  cudaEvent_t copy_in_done[num_batches], compute_collision_done[num_batches], compute_score_done[num_batches], copy_out_done[num_batches];
 
   auto start = std::chrono::steady_clock::now();
 
@@ -272,10 +274,12 @@ int run_program() {
   cudaStreamCreate(&compute_score_stream);
   cudaStreamCreate(&copy_out_stream);
 
-  cudaEventCreate(&copy_in_done);
-  cudaEventCreate(&compute_collision_done);
-  cudaEventCreate(&compute_score_done);
-  cudaEventCreate(&copy_out_done);
+  for (int i = 0; i < num_batches; i++) {
+    cudaEventCreate(&copy_in_done[i]);
+    cudaEventCreate(&compute_collision_done[i]);
+    cudaEventCreate(&compute_score_done[i]);
+    cudaEventCreate(&copy_out_done[i]);
+  }
 
   // Prime the pipeline: kick off copy of batch 0
   std::copy(robot_spheres_v.begin(), robot_spheres_v.end(), robot_spheres.host);
@@ -287,52 +291,56 @@ int run_program() {
   // This only needs to be done once for now
   robot_path_range_buffer.copy_to_device_async(copy_in_stream);
   
-  cudaEventRecord(copy_in_done, copy_in_stream);
+  cudaEventRecord(copy_in_done[0], copy_in_stream);
 
-  int num_batches = 20;
   BatchContext batches[num_batches];
   for (int n = 0; n < num_batches; n++) {
     // Compute stream waits only for this buffer's copy, not the whole copy stream
-    cudaStreamWaitEvent(compute_collision_stream, copy_in_done, 0);
+    cudaStreamWaitEvent(compute_collision_stream, copy_in_done[n], 0);
+    if (n > 0) {
+      cudaStreamWaitEvent(compute_collision_stream, compute_score_done[n-1], 0);
+    }
     dim3 coll_block(SPHERE_BLOCK_DIM, ROBOT_BLOCK_DIM, 1);
     dim3 coll_grid(1, (b + coll_block.y - 1) / coll_block.y, (e + OBSTACLES_PER_THREAD - 1) / OBSTACLES_PER_THREAD);
-    check_collisions<<<coll_grid, coll_block>>>(
+    check_collisions<<<coll_grid, coll_block, 0, compute_collision_stream>>>(
       b, j, e,
       robot_spheres.device,
       obstacle_spheres.device,
       collides.device
     );
-    cudaEventRecord(compute_collision_done, compute_collision_stream);
+    cudaEventRecord(compute_collision_done[n], compute_collision_stream);
 
     // We need to wait on our input data (collision states) and for the previous copy to complete so we can use the buffer
-    cudaStreamWaitEvent(compute_score_stream, compute_collision_done, 0);
-    cudaStreamWaitEvent(compute_score_stream, copy_out_done, 0);
+    cudaStreamWaitEvent(compute_score_stream, compute_collision_done[n], 0);
+    if (n > 0) {
+      cudaStreamWaitEvent(compute_score_stream, copy_out_done[n-1], 0);
+    }
     dim3 score_block(256, 1, 1);
     dim3 score_grid((num_paths + score_block.x - 1) / score_block.x, 1, 1);
-    score_paths<<<score_grid, score_block>>>(
+    score_paths<<<score_grid, score_block, 0, compute_score_stream>>>(
       num_paths,
       robot_path_range_buffer.device,
       collides.device,
       scores.device
     );
-    cudaEventRecord(compute_score_done, compute_score_stream);
+    cudaEventRecord(compute_score_done[n], compute_score_stream);
 
     // Once collisions are done we can immedietly start copying in the next batch, if it exists
     if (n + 1 < num_batches) {
-      cudaStreamWaitEvent(copy_in_stream, compute_collision_done, 0);
+      cudaStreamWaitEvent(copy_in_stream, compute_collision_done[n], 0);
       std::copy(robot_spheres_v.begin(), robot_spheres_v.end(), robot_spheres.host);
       robot_spheres.copy_to_device_async(copy_in_stream);
 
       std::copy(obstacle_spheres_v.begin(), obstacle_spheres_v.end(), obstacle_spheres.host);
       obstacle_spheres.copy_to_device_async(copy_in_stream);
-      cudaEventRecord(copy_in_done, copy_in_stream);
+      cudaEventRecord(copy_in_done[n+1], copy_in_stream);
     }
 
-    cudaStreamWaitEvent(copy_out_stream, compute_score_done, 0);
+    cudaStreamWaitEvent(copy_out_stream, compute_score_done[n], 0);
     scores.copy_to_host_async(copy_out_stream);
     batches[n] = BatchContext{n, &scores};
     cudaLaunchHostFunc(copy_out_stream, on_batch_ready, &(batches[n]));
-    cudaEventRecord(copy_out_done, copy_out_stream);
+    cudaEventRecord(copy_out_done[n], copy_out_stream);
   }
 
   cudaDeviceSynchronize();
