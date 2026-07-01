@@ -4,6 +4,7 @@
 #include <cassert>
 #include <vector>
 #include <iomanip>
+#include <algorithm>
 #include "buffers.h"
 
 const int SPHERE_BLOCK_DIM = 8;
@@ -89,6 +90,30 @@ void check_collisions(
   }
 }
 
+__global__
+void score_paths(
+  const int num_paths,
+  const uint32_t* __restrict__ robot_path_ranges,
+  const uint8_t* __restrict__ collides,
+  float_t*__restrict__ scores)
+{
+  for (int w = 0; w < 10000; w++) {
+    int path_idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (path_idx < num_paths) {
+      int path_start = robot_path_ranges[path_idx];
+      int path_end = robot_path_ranges[path_idx + 1];
+
+      float score = 0;
+      for (int body_idx = path_start; body_idx < path_end; body_idx++) {
+        score += collides[body_idx] ? -1000.0 : 1.0;
+      }
+
+      scores[path_idx] = score;
+    }
+  }
+}
+
 void add_cube(float3 p, float r, std::vector<Sphere> &spheres) {
   spheres.push_back({r, make_float3(p.x - r, p.y - r, p.z - r)});
   spheres.push_back({r, make_float3(p.x + r, p.y - r, p.z - r)});
@@ -104,7 +129,7 @@ void draw_cubes_in_grid(int2 start_grid_idx, int2 end_grid_idx, std::vector<Sphe
   int x_diff = end_grid_idx.x - start_grid_idx.x;
   int y_diff = end_grid_idx.y - start_grid_idx.y;
   int longer_distance = max(x_diff, y_diff);
-  int num_spheres = longer_distance * 3;
+  int num_spheres = longer_distance * 10;
 
   float radius = 0.25;
 
@@ -125,6 +150,25 @@ bool check_for_true(uint8_t *values, int start, int end) {
   }
   return false;
 }
+
+struct BatchContext {
+  int batch_id;
+  Buffers<float_t>* scores;
+};
+
+void CUDART_CB on_batch_ready(void* userData) {
+  BatchContext* ctx = static_cast<BatchContext*>(userData);
+  //std::cout << "Finished Batch: "<< ctx->batch_id << "\n";
+
+  float_t *scores = ctx->scores->host;
+  assert(scores[0] < 0);
+  assert(scores[1] > 0);
+  assert(scores[2] < 0);
+  assert(scores[3] < 0);
+  assert(scores[4] > 0);
+  assert(scores[5] < 0);
+  //std::cout << "Assertions passed\n";
+};
 
 int run_program() {
 
@@ -164,31 +208,37 @@ int run_program() {
     make_int2(8, 4),
   };
 
+  int num_path_repeats = 100;
+  int num_paths_templates = 3;
+  int num_paths = num_paths_templates * num_path_repeats;
+
   int j = 8;
-  int robot_path_ranges[3];
+  Buffers<uint32_t> robot_path_range_buffer(num_paths + 1);
+  robot_path_range_buffer.host[0] = 0;
   std::vector<Sphere> robot_spheres_v;
-  for(int i = 0; i < 3; i++) {
-    draw_cubes_in_grid(robot_path_1[i], robot_path_1[i + 1], robot_spheres_v);
-  }
-  robot_path_ranges[0] = robot_spheres_v.size() / j;
+  for (int r = 0; r < num_path_repeats; r++) {
+    for(int i = 0; i < 3; i++) {
+      draw_cubes_in_grid(robot_path_1[i], robot_path_1[i + 1], robot_spheres_v);
+    }
+    robot_path_range_buffer.host[r * num_paths_templates + 1] = robot_spheres_v.size() / j;
 
-  for(int i = 0; i < 3; i++) {
-    draw_cubes_in_grid(robot_path_2[i], robot_path_2[i + 1], robot_spheres_v);
-  }
-  robot_path_ranges[1] = robot_spheres_v.size() / j;
+    for(int i = 0; i < 3; i++) {
+      draw_cubes_in_grid(robot_path_2[i], robot_path_2[i + 1], robot_spheres_v);
+    }
+    robot_path_range_buffer.host[r * num_paths_templates + 2] = robot_spheres_v.size() / j;
 
-  for(int i = 0; i < 2; i++) {
-    draw_cubes_in_grid(robot_path_3[i], robot_path_3[i + 1], robot_spheres_v);
+    for(int i = 0; i < 2; i++) {
+      draw_cubes_in_grid(robot_path_3[i], robot_path_3[i + 1], robot_spheres_v);
+    }
+    robot_path_range_buffer.host[r * num_paths_templates + 3] = robot_spheres_v.size() / j;
   }
-  robot_path_ranges[2] = robot_spheres_v.size() / j;
+  
+  int max_path_length = *std::max_element(robot_path_range_buffer.host, robot_path_range_buffer.host + robot_path_range_buffer.count);
 
   int num_spheres = robot_spheres_v.size();
   int b = num_spheres / j;
   
   Buffers<Sphere> robot_spheres(num_spheres);
-  std::copy(robot_spheres_v.begin(), robot_spheres_v.end(), robot_spheres.host);
-  robot_spheres.copy_to_device();
-
 
   std::vector<Sphere> obstacle_spheres_v;
   for(int x = 0; x < map_dim; x++) {
@@ -204,36 +254,65 @@ int run_program() {
     }
   }
   int e = obstacle_spheres_v.size();
+
+  //std::cout << "B: "<< b << " J: "<< j << " E: "<< e << "\n";
+
   Buffers<Sphere> obstacle_spheres(e);
-  std::copy(obstacle_spheres_v.begin(), obstacle_spheres_v.end(), obstacle_spheres.host);
-  obstacle_spheres.copy_to_device();
 
   Buffers<uint8_t> collides(b);
-  std::fill_n(collides.host, collides.count, 0);
-  collides.copy_to_device();
-
-  dim3 block(SPHERE_BLOCK_DIM, ROBOT_BLOCK_DIM, 1);
-  dim3 grid(1, (b + block.y - 1) / block.y, (e + OBSTACLES_PER_THREAD - 1) / OBSTACLES_PER_THREAD);
-
-  std::cout << "B: "<< b << " J: "<< j << " E: "<< e << "\n";
+  Buffers<float_t> scores(num_paths);
 
   auto start = std::chrono::steady_clock::now();
 
-  check_collisions<<<grid, block>>>(
+  // Prime the pipeline: kick off copy of batch 0
+  std::copy(robot_spheres_v.begin(), robot_spheres_v.end(), robot_spheres.host);
+  robot_spheres.copy_to_device();
+
+  std::copy(obstacle_spheres_v.begin(), obstacle_spheres_v.end(), obstacle_spheres.host);
+  obstacle_spheres.copy_to_device();
+
+  // This only needs to be done once for now
+  robot_path_range_buffer.copy_to_device();
+  
+
+  int num_batches = 20;
+  BatchContext batches[num_batches];
+  for (int n = 0; n < num_batches; n++) {
+    // Compute stream waits only for this buffer's copy, not the whole copy stream
+    dim3 coll_block(SPHERE_BLOCK_DIM, ROBOT_BLOCK_DIM, 1);
+    dim3 coll_grid(1, (b + coll_block.y - 1) / coll_block.y, (e + OBSTACLES_PER_THREAD - 1) / OBSTACLES_PER_THREAD);
+    check_collisions<<<coll_grid, coll_block>>>(
       b, j, e,
       robot_spheres.device,
       obstacle_spheres.device,
       collides.device
-  );
+    );
 
-  collides.copy_to_host();
+    dim3 score_block(256, 1, 1);
+    dim3 score_grid((num_paths + score_block.x - 1) / score_block.x, 1, 1);
+    score_paths<<<score_grid, score_block>>>(
+      num_paths,
+      robot_path_range_buffer.device,
+      collides.device,
+      scores.device
+    );
+
+    // Once collisions are done we can immedietly start copying in the next batch, if it exists
+    if (n + 1 < num_batches) {
+      std::copy(robot_spheres_v.begin(), robot_spheres_v.end(), robot_spheres.host);
+      robot_spheres.copy_to_device();
+
+      std::copy(obstacle_spheres_v.begin(), obstacle_spheres_v.end(), obstacle_spheres.host);
+      obstacle_spheres.copy_to_device();
+    }
+
+    scores.copy_to_host();
+    batches[n] = BatchContext{n, &scores};
+    on_batch_ready(&(batches[n]));
+  }
 
   auto end = std::chrono::steady_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-
-  assert(check_for_true(collides.host, 0, robot_path_ranges[0]));
-  assert(!check_for_true(collides.host, robot_path_ranges[0], robot_path_ranges[1]));
-  assert(check_for_true(collides.host, robot_path_ranges[1], robot_path_ranges[2]));
 
   return duration.count();
 }
@@ -243,13 +322,13 @@ int main(int argc, char* argv[])
   //int N = std::stoi(argv[1]);
 
   // warm up
-  int numWarmups = 10;
+  int numWarmups = 0;
   for(int i = 0; i < numWarmups; i++) {
     run_program();
   }
 
   int totalMicroseconds = 0;
-  int numRuns = 10;
+  int numRuns = 1;
   for(int i = 0; i < numRuns; i++) {
     totalMicroseconds += run_program();
   }

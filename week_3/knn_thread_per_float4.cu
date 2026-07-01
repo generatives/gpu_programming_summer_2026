@@ -12,7 +12,6 @@ constexpr int THREADS_PER_CONFIG = 2;
 constexpr int CONFIGS_PER_WARP = WARP_SIZE / THREADS_PER_CONFIG;
 constexpr int K = 8;
 constexpr int N = 30000;
-constexpr int Q = 8;
 
 struct __align__(16) Config {
   float data[CONFIG_SIZE];
@@ -105,92 +104,78 @@ void brute_knn_search(
   const Config* __restrict__ configs,
   uint*__restrict__ knn)
 {
-  uint nearest_k_idx[Q][K];
-  float nearest_k_dist[Q][K];
+  uint nearest_k_idx[K];
+  float nearest_k_dist[K];
   int worst_entry = 0;
   float worst_dist = INFINITY;
 
-  for (int q = 0; q < Q; q++) {
-    for (int k = 0; k < K; k++) {
-        nearest_k_idx[q][k] = N;
-        nearest_k_dist[q][k] = INFINITY;
-    }
+  for (int i = 0; i < K; i++) {
+      nearest_k_idx[i] = N;
+      nearest_k_dist[i] = INFINITY;
   }
 
   const float4* config_floats = reinterpret_cast<const float4*>(configs);
 
-  int base_query_idx = blockDim.y * Q * blockIdx.y + threadIdx.y;
+  int query_idx = blockDim.y * blockIdx.y + threadIdx.y;
   int thread_base_config_idx = threadIdx.x / THREADS_PER_CONFIG;
   int config_slot_number = threadIdx.x % THREADS_PER_CONFIG;
-  bool active = base_query_idx < N;
+  bool active = query_idx < N;
   if(active) {
-
-    float4 query_v[Q];
-    for(int q = 0; q < Q; q++) {
-      int query_idx = base_query_idx + q * blockDim.y * Q;
-      const Config query = configs[query_idx];
-      const float4* query_floats = reinterpret_cast<const float4*>(query.data);
-      query_v[q] = query_floats[config_slot_number];
-    }
+    const Config query = configs[query_idx];
+    const float4* query_floats = reinterpret_cast<const float4*>(query.data);
 
     for(int i = thread_base_config_idx; i < N; i += CONFIGS_PER_WARP) {
       int candidate_slot_number = (i * THREADS_PER_CONFIG) + config_slot_number;
       float4 candidate_v = config_floats[candidate_slot_number];
-      for(int q = 0; q < Q; q++) {
-        float distance = vector_distance(candidate_v, query_v[q]);
+      float4 query_v = query_floats[config_slot_number];
+      float distance = vector_distance(candidate_v, query_v);
 
-        unsigned mask = 0xffffffff;
-        for (int offset = THREADS_PER_CONFIG / 2; offset > 0; offset /= 2) {
-          float other_distance = __shfl_down_sync(mask, distance, offset);
-          distance += other_distance;
-        }
+      unsigned mask = 0xffffffff;
+      for (int offset = THREADS_PER_CONFIG / 2; offset > 0; offset /= 2) {
+        float other_distance = __shfl_down_sync(mask, distance, offset);
+        distance += other_distance;
+      }
 
-        if(config_slot_number == 0) {
-          attempt_add_unsorted(
-            worst_dist,
-            worst_entry,
-            nearest_k_idx[q],
-            nearest_k_dist[q],
-            i,
-            distance
-          );
-        }
+      if(config_slot_number == 0) {
+        attempt_add_unsorted(
+          worst_dist,
+          worst_entry,
+          nearest_k_idx,
+          nearest_k_dist,
+          i,
+          distance
+        );
       }
     }
 
-    for(int q = 0; q < Q; q++) {
-      unsigned mask = 0xffffffff;
-      for (int offset = warpSize / 2; offset > (THREADS_PER_CONFIG - 1); offset /= 2) {
-        int other_idx[K];
-        float other_dist[K];
+    unsigned mask = 0xffffffff;
+    for (int offset = warpSize / 2; offset > (THREADS_PER_CONFIG - 1); offset /= 2) {
+      int other_idx[K];
+      float other_dist[K];
 
-        for (int i = 0; i < K; i++) {
-          other_idx[i] = __shfl_down_sync(mask, nearest_k_idx[q][i], offset);
-          other_dist[i] = __shfl_down_sync(mask, nearest_k_dist[q][i], offset);
-        }
+      for (int i = 0; i < K; i++) {
+        other_idx[i] = __shfl_down_sync(mask, nearest_k_idx[i], offset);
+        other_dist[i] = __shfl_down_sync(mask, nearest_k_dist[i], offset);
+      }
 
-        __syncwarp();
+      __syncwarp();
 
-        for (int i = 0; i < K; i++) {
-          attempt_add_unsorted(
-            worst_dist,
-            worst_entry,
-            nearest_k_idx[q],
-            nearest_k_dist[q],
-            other_idx[i],
-            other_dist[i]
-          );
-        }
+      for (int i = 0; i < K; i++) {
+        attempt_add_unsorted(
+          worst_dist,
+          worst_entry,
+          nearest_k_idx,
+          nearest_k_dist,
+          other_idx[i],
+          other_dist[i]
+        );
       }
     }
 
     if(threadIdx.x == 0) {
-      for(int q = 0; q < Q; q++) {
-        int query_idx = base_query_idx + q * blockDim.y * Q;
-        int knn_base_idx = query_idx * K;
-        for(int i = 0; i < K; i++) {
-          knn[knn_base_idx + i] = nearest_k_idx[q][i];
-        }
+      int knn_base_idx = query_idx * K;
+      for(int i = 0; i < K; i++) {
+        knn[knn_base_idx + i] = nearest_k_idx[i];
       }
     }
   }
@@ -258,8 +243,7 @@ int run_program() {
 
   int warpSize = 32;
   dim3 block(warpSize, 256 / warpSize, 1);
-  int query_per_block = block.y * Q;
-  dim3 grid(1, (N + query_per_block - 1) / query_per_block, 1);
+  dim3 grid(1, (N + block.y - 1) / block.y, 1);
 
   auto start = std::chrono::steady_clock::now();
 
