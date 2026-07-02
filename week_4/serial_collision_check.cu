@@ -97,7 +97,7 @@ void score_paths(
   const uint8_t* __restrict__ collides,
   float_t*__restrict__ scores)
 {
-  for (int w = 0; w < 10000; w++) {
+  for (int w = 0; w < 250; w++) {
     int path_idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (path_idx < num_paths) {
@@ -322,13 +322,13 @@ int main(int argc, char* argv[])
   //int N = std::stoi(argv[1]);
 
   // warm up
-  int numWarmups = 0;
+  int numWarmups = 3;
   for(int i = 0; i < numWarmups; i++) {
     run_program();
   }
 
   int totalMicroseconds = 0;
-  int numRuns = 1;
+  int numRuns = 10;
   for(int i = 0; i < numRuns; i++) {
     totalMicroseconds += run_program();
   }

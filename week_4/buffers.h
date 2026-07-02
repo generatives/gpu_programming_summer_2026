@@ -73,4 +73,21 @@ struct Buffers {
       cudaMemcpyDeviceToHost,
       stream);
   }
+
+  void copy_across_device_buffers(Buffers<T> *target_buffer) {
+    cudaMemcpy(
+      target_buffer->device,
+      device,
+      count * sizeof(T),
+      cudaMemcpyDeviceToDevice);
+  }
+
+  void copy_across_device_buffers_async(Buffers<T> *target_buffer, cudaStream_t stream = (cudaStream_t)0) {
+    cudaMemcpyAsync(
+      target_buffer->device,
+      device,
+      count * sizeof(T),
+      cudaMemcpyDeviceToDevice,
+      stream);
+  }
 };

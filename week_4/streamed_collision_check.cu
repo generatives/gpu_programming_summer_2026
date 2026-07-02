@@ -97,7 +97,7 @@ void score_paths(
   const uint8_t* __restrict__ collides,
   float_t*__restrict__ scores)
 {
-  for (int w = 0; w < 1000; w++) {
+  for (int w = 0; w < 250; w++) {
     int path_idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (path_idx < num_paths) {
@@ -259,24 +259,30 @@ int run_program() {
 
   Buffers<Sphere> obstacle_spheres(e);
 
-  Buffers<uint8_t> collides(b);
+  // Separate buffers for collision data so the collision and scoring stages can run in parallel
+  // We need to copy from one to the other after collision ends/before scoring starts 
+  Buffers<uint8_t> collides_out(b);
+  Buffers<uint8_t> collides_in(b);
+
   Buffers<float_t> scores(num_paths);
 
   int num_batches = 20;
 
-  cudaStream_t copy_in_stream, compute_collision_stream, compute_score_stream, copy_out_stream;
-  cudaEvent_t copy_in_done[num_batches], compute_collision_done[num_batches], compute_score_done[num_batches], copy_out_done[num_batches];
+  cudaStream_t copy_in_stream, compute_collision_stream, copy_across_stream, compute_score_stream, copy_out_stream;
+  cudaEvent_t copy_in_done[num_batches], compute_collision_done[num_batches], copy_across_done[num_batches],  compute_score_done[num_batches], copy_out_done[num_batches];
 
   auto start = std::chrono::steady_clock::now();
 
   cudaStreamCreate(&copy_in_stream);
   cudaStreamCreate(&compute_collision_stream);
+  cudaStreamCreate(&copy_across_stream);
   cudaStreamCreate(&compute_score_stream);
   cudaStreamCreate(&copy_out_stream);
 
   for (int i = 0; i < num_batches; i++) {
     cudaEventCreate(&copy_in_done[i]);
     cudaEventCreate(&compute_collision_done[i]);
+    cudaEventCreate(&copy_across_done[i]);
     cudaEventCreate(&compute_score_done[i]);
     cudaEventCreate(&copy_out_done[i]);
   }
@@ -295,10 +301,11 @@ int run_program() {
 
   BatchContext batches[num_batches];
   for (int n = 0; n < num_batches; n++) {
-    // Compute stream waits only for this buffer's copy, not the whole copy stream
+    // Check for collisions
+    // Ensuring data is available and the output buffer is free
     cudaStreamWaitEvent(compute_collision_stream, copy_in_done[n], 0);
     if (n > 0) {
-      cudaStreamWaitEvent(compute_collision_stream, compute_score_done[n-1], 0);
+      cudaStreamWaitEvent(compute_collision_stream, copy_across_done[n-1], 0);
     }
     dim3 coll_block(SPHERE_BLOCK_DIM, ROBOT_BLOCK_DIM, 1);
     dim3 coll_grid(1, (b + coll_block.y - 1) / coll_block.y, (e + OBSTACLES_PER_THREAD - 1) / OBSTACLES_PER_THREAD);
@@ -306,12 +313,22 @@ int run_program() {
       b, j, e,
       robot_spheres.device,
       obstacle_spheres.device,
-      collides.device
+      collides_out.device
     );
     cudaEventRecord(compute_collision_done[n], compute_collision_stream);
 
+    // Copy across buffers to the next collision check can start
+    // Make sure the inputs are ready and the output is free
+    cudaStreamWaitEvent(copy_across_stream, compute_collision_done[n], 0);
+    if (n > 0) {
+      cudaStreamWaitEvent(copy_across_stream, compute_score_done[n-1], 0);
+    }
+    collides_out.copy_across_device_buffers_async(&collides_in, copy_across_stream);
+    cudaEventRecord(copy_across_done[n], copy_across_stream);
+    
+    // Score each trajectory
     // We need to wait on our input data (collision states) and for the previous copy to complete so we can use the buffer
-    cudaStreamWaitEvent(compute_score_stream, compute_collision_done[n], 0);
+    cudaStreamWaitEvent(compute_score_stream, copy_across_done[n], 0);
     if (n > 0) {
       cudaStreamWaitEvent(compute_score_stream, copy_out_done[n-1], 0);
     }
@@ -320,7 +337,7 @@ int run_program() {
     score_paths<<<score_grid, score_block, 0, compute_score_stream>>>(
       num_paths,
       robot_path_range_buffer.device,
-      collides.device,
+      collides_in.device,
       scores.device
     );
     cudaEventRecord(compute_score_done[n], compute_score_stream);
@@ -356,13 +373,13 @@ int main(int argc, char* argv[])
   //int N = std::stoi(argv[1]);
 
   // warm up
-  int numWarmups = 0;
+  int numWarmups = 3;
   for(int i = 0; i < numWarmups; i++) {
     run_program();
   }
 
   int totalMicroseconds = 0;
-  int numRuns = 1;
+  int numRuns = 10;
   for(int i = 0; i < numRuns; i++) {
     totalMicroseconds += run_program();
   }
