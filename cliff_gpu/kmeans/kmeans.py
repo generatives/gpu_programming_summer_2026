@@ -13,30 +13,31 @@ class KMeans:
         # Randomly initialize with well spaced selections
         n_samples = X.shape[0]
         centroids = []
-        
-        # First centroid: random selection
-        first_idx = np.random.randint(n_samples)
-        centroids.append(X[first_idx])
-        
+
+        distances = np.full((n_samples, self.n_clusters), np.inf)
+
         # Remaining centroids: weighted by distance to nearest existing centroid
-        for _ in range(1, self.n_clusters):
-            # Calculate min distance from each point to any existing centroid
-            distances = np.array([
-                np.min(np.linalg.norm(X - c, axis=1)) 
-                for c in centroids
-            ])
-            min_distances = np.min([
-                np.linalg.norm(X - c, axis=1) 
-                for c in centroids
-            ], axis=0)
+        for i in range(0, self.n_clusters):
+            if i == 0:
+                # First centroid: random selection
+                first_idx = np.random.randint(n_samples)
+                new_centroid = X[first_idx]
+                centroids.append(new_centroid)
+            else:
+                # Calculate min distance from each point to any existing centroid
+                weights = np.min(distances, axis=1)
+
+                #print(weights.shape)
+                #print(weights)
+
+                weights /= weights.sum()
+                
+                # Select next centroid
+                next_idx = np.random.choice(n_samples, p=weights)
+                new_centroid = X[next_idx]
+                centroids.append(new_centroid)
             
-            # Weight probabilities by distance squared
-            weights = min_distances ** 2
-            weights /= weights.sum()
-            
-            # Select next centroid
-            next_idx = np.random.choice(n_samples, p=weights)
-            centroids.append(X[next_idx])
+            distances[:, i] = np.linalg.norm(X - new_centroid, axis=1) ** 2
         
         self.centroids = np.array(centroids)
 

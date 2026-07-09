@@ -1,13 +1,8 @@
 import numpy as np
-from kmeans import KMeans
+from cliff_gpu.kmeans.kmeans import KMeans
 
-class MultiGaussianMixtureModel:
-    def __init__(self, n_models, n_components,
-                 max_iter=100, tol=1e-3,
-                 init='kmeans',
-                 verbose=False,
-                 mu=None, sigma=None, pi=None):
-        self.n_models = n_models
+class GaussianMixtureModel:
+    def __init__(self, n_components, max_iter=100, tol=1e-3, init='kmeans', verbose=False, mu=None, sigma=None, pi=None):
         self.n_components = n_components
         self.max_iter = max_iter
         self.tol = tol

@@ -3,6 +3,22 @@ This repo contains a high performance GPU implementation on the GPU.
 
 I will start with experiments with plain GMM. I will benchmark the sklearn implementation and the "pomegranate" GPU implementation of GMM. If there are obvious opportunities for imporvement I will try writing a fast GMM implementation in Triton or CUDA. If not then I will move on the the CLiFF method itself.
 
+## Multi KMeans Benchmarking Results
+### Warp GPU Implementation
+1000m 3c 3000n: 0.64s
+
+Note: The numpy based init process takes about 0.22s so the actual kernel takes 0.42s
+
+### Tiled Warp GPU Implementation
+1000m 3c 3000n: 0.28s
+
+Note: The numpy based init process takes about 0.22s so the actual kernel takes 0.06s
+
+### Scikitlearn Implementation
+1000m 3c 3000n series: ~2s
+
+Note: The numpy based init process takes about 0.22s so the actual kernel takes 1.78s
+
 ## KMeans Benchmarking Results
 Both with kinit++ from 1000 randomly sampled
 ### Warp GPU Implementation

@@ -3,7 +3,7 @@ from typing import Any
 import numpy as np
 from scipy.linalg import solve_triangular
 from scipy.special import logsumexp
-from kmeans import KMeans
+from cliff_gpu.kmeans.kmeans import KMeans
 
 class OptimGaussianMixtureModel:
     def __init__(self, n_components, max_iter=100, tol=1e-3, init='kmeans', verbose=False, mu=None, sigma=None, pi=None):
