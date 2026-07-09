@@ -55,34 +55,6 @@ def kmean_iteration(X: wp.array[wp.vec2f],
         data_tile[tile_data_idx] = X[buffer_data_idx] if buffer_data_idx < data_end else wp.vec2f(0.0, 0.0)
         tile_data_idx = tile_data_idx + BLOCK_SIZE
 
-    # init centroids
-    state = wp.rand_init(0)
-    model_centroids = wp.tile_empty((NUM_CLUSTERS,), dtype=wp.vec2f)
-    min_distances = wp.tile_full((MAX_DATA_SIZE,), wp.inf, dtype=wp.float16)
-    for i in range(0, NUM_CLUSTERS):
-        if i == 0:
-            # First centroid: random selection
-            first_idx = wp.randi(state, 0, actual_data_size)
-            new_centroid = data_tile[first_idx]
-        else:
-            weights = min_distances / wp.tile_sum(min_distances)[0]
-            cpf = wp.tile_scan_inclusive(wp.tile_astype(weights, dtype=wp.float32))
-            selected = wp.randf(state)
-            selected_idx = first_idx_above(cpf, selected)
-            new_centroid = data_tile[selected_idx[0]]
-        
-        model_centroids[i] = new_centroid
-
-        differences = wp.tile_map(wp.sub, data_tile, new_centroid)
-        distances = wp.tile_astype(wp.tile_map(wp.length_sq, differences), dtype=wp.float16)
-        min_distances = wp.tile_map(wp.min, min_distances, distances)
-
-        tile_data_idx = i
-        while tile_data_idx < MAX_DATA_SIZE:
-            min_distances[tile_data_idx] = wp.float16(0.0) if tile_data_idx >= actual_data_size else min_distances[tile_data_idx]
-            tile_data_idx = tile_data_idx + BLOCK_SIZE
-
-
     iteration = int(0)
     while iteration < MAX_ITERATIONS:
         # label each data point
@@ -184,9 +156,7 @@ class TiledKMeans:
         assert model_idx_lookup.shape[0] == X.shape[0], "model_idx_lookup should have the same length as the dataset"
 
         #start_time = time.time()
-        #self._kinit(X, offsets)
-        num_centroids = self.n_models * self.n_clusters
-        self.centroids = np.empty((num_centroids, X.shape[1]))
+        self._kinit(X, offsets)
         #end_time = time.time()
         #print(f"Init took: {end_time - start_time}s")
         self.labels = []
