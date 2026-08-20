@@ -29,7 +29,7 @@ def first_idx_above(data_tile: wp.tile[wp.float32, MAX_DATA_SIZE], threshold: fl
     return first_idx
 
 @wp.kernel
-def kmean_iteration(X: wp.array[wp.vec2f],
+def fit(X: wp.array[wp.vec2f],
                 centroids: wp.array[wp.vec2f],
                 offsets: wp.array[wp.int32],
                 n_clusters: wp.int32):
@@ -165,7 +165,7 @@ class TiledKMeans:
         centroids_buffer = wp.array(self.centroids, dtype=wp.vec2f, device="cuda")
         offsets_buffer = wp.array(offsets, dtype=wp.int32, device="cuda")
 
-        wp.launch_tiled(kmean_iteration,
+        wp.launch_tiled(fit,
                         dim=self.n_models,
                         inputs=[x_buffer, centroids_buffer, offsets_buffer, self.n_clusters],
                         block_dim=BLOCK_SIZE)
