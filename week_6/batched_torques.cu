@@ -157,30 +157,6 @@ Mat6xD<D> build_mat6xd(std::array<float, 6 * D> data) {
   return output;
 }
 
-template<unsigned int D>
-Mat6xD<D> scaled_identity(float scale) {
-  Mat6xD<D> output;
-
-  #pragma unroll
-  for (int i = 0; i < D; i++) {
-    output.data[i][0] = 0.0f;
-    output.data[i][1] = 0.0f;
-    output.data[i][2] = 0.0f;
-    output.data[i][3] = 0.0f;
-    output.data[i][4] = 0.0f;
-    output.data[i][5] = 0.0f;
-  }
-
-  output.data[0][0] = scale;
-  output.data[1][1] = scale;
-  output.data[2][2] = scale;
-  output.data[3][3] = scale;
-  output.data[4][4] = scale;
-  output.data[5][5] = scale;
-
-  return output;
-}
-
 // Matrix representing a J value for the robot
 using MatJ = Mat6xD<NUM_JOINTS>;
 // NUM_JOINT dimensional vector representing the torques required to produce and end effector force
@@ -209,7 +185,6 @@ void batched_torques(
   int col = threadIdx.x;
   int index = blockIdx.y * blockDim.y + threadIdx.y;
   int stride = blockDim.y * gridDim.y;
-  //int force_idx = threadIdx.z;
   
   for (int config_idx = index; config_idx < num_configs; config_idx += stride) {
     for (int force_idx = 0; force_idx < NUM_FORCES; force_idx++) {
@@ -326,23 +301,23 @@ void test_program_correct() {
   f.copy_to_device();
   t.copy_to_device();
 
-  // dim3 block(NUM_JOINTS, BLOCK_DIM_Y, 1);
-  // dim3 grid(1, (num_matrices + block.y - 1) / block.y, 1);
-  // batched_torques<<<grid, block>>>(
-  //   num_matrices,
-  //   j.device,
-  //   f.device,
-  //   t.device
-  // );
-
-  dim3 block(BLOCK_SIZE_X, 1, 1);
-  dim3 grid((num_matrices + block.x - 1) / block.x, 1, 1);
-  wmma_batched_torques<<<grid, block>>>(
+  dim3 block(NUM_JOINTS, BLOCK_DIM_Y, 1);
+  dim3 grid(1, (num_matrices + block.y - 1) / block.y, 1);
+  batched_torques<<<grid, block>>>(
     num_matrices,
     j.device,
     f.device,
     t.device
   );
+
+  // dim3 block(BLOCK_SIZE_X, 1, 1);
+  // dim3 grid((num_matrices + block.x - 1) / block.x, 1, 1);
+  // wmma_batched_torques<<<grid, block>>>(
+  //   num_matrices,
+  //   j.device,
+  //   f.device,
+  //   t.device
+  // );
 
   cudaError_t launch_err = cudaGetLastError();
   if (launch_err != cudaSuccess)
@@ -407,27 +382,40 @@ long run_program() {
     t.device
   );
 
-  t.copy_to_host();
+  // dim3 block(BLOCK_SIZE_X, 1, 1);
+  // dim3 grid((num_matrices + block.x - 1) / block.x, 1, 1);
+  // wmma_batched_torques<<<grid, block>>>(
+  //   num_matrices,
+  //   j.device,
+  //   f.device,
+  //   t.device
+  // );
+
+  cudaDeviceSynchronize();
 
   auto end = std::chrono::steady_clock::now();
   auto custom_duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+
+  t.copy_to_host();
 
   return custom_duration.count();
 }
  
 int main(int argc, char* argv[])
 {
-  test_program_correct();
-  return 0;
+  //test_program_correct();
+  //return 0;
+
+  std::cout << "Running\n";
 
   // warm up
-  int numWarmups = 0;
+  int numWarmups = 3;
   for(int i = 0; i < numWarmups; i++) {
     run_program();
   }
 
   long totalCustomMicroseconds = 0;
-  int numRuns = 1;
+  int numRuns = 10;
   for(int i = 0; i < numRuns; i++) {
     long time = run_program();
     totalCustomMicroseconds += time;
