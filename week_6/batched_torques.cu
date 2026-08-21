@@ -6,6 +6,9 @@
 #include <algorithm>
 #include <random>
 #include <cmath>
+#include <mma.h>
+
+using namespace nvcuda;
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -17,7 +20,7 @@
 #include "cublas_v2.h"
 
 const int NUM_JOINTS = 7;
-const int NUM_FORCES = 16;
+const int NUM_FORCES = 8;
 const int BLOCK_DIM_Y = 64;
 
 __host__ __device__ inline bool nearlyEqual(float a, float b, float eps = 1e-5f) {
@@ -77,19 +80,17 @@ __host__ __device__ inline bool nearlyEqual(const VecD<D>& a, const VecD<D>& b, 
     return true;
 }
 
-struct Mat6Col {
-  float4 vec[2];
-};
-
 template<unsigned int D>
 struct Mat6xD {
-    Mat6Col cols[D];
+    float data[D][6];
 
   __device__ __host__ bool operator==(const Mat6xD &a) {
     #pragma unroll
-    for (int i = 0; i < D * 2; i++) {
-      if (cols[i] != a.cols[i]) {
-        return false;
+    for (int i = 0; i < D; i++) {
+      for (int j = 0; j < 6; j++) {
+        if (data[i][j] != a.data[i][j]) {
+          return false;
+        }
       }
     }
     return true;
@@ -114,14 +115,12 @@ Mat6xD<D> sample_mat6xd() {
 
   #pragma unroll
   for (int i = 0; i < D; i++) {
-    output.cols[i].vec[0].x = distr(gen);
-    output.cols[i].vec[0].y = distr(gen);
-    output.cols[i].vec[0].z = distr(gen);
-    output.cols[i].vec[0].w = distr(gen);
-    output.cols[i].vec[1].x = distr(gen);
-    output.cols[i].vec[1].y = distr(gen);
-    output.cols[i].vec[1].z = 0.0f;
-    output.cols[i].vec[1].w = 0.0f;
+    output.data[i][0] = distr(gen);
+    output.data[i][1] = distr(gen);
+    output.data[i][2] = distr(gen);
+    output.data[i][3] = distr(gen);
+    output.data[i][4] = distr(gen);
+    output.data[i][5] = distr(gen);
   }
 
   return output;
@@ -147,14 +146,12 @@ Mat6xD<D> build_mat6xd(std::array<float, 6 * D> data) {
   #pragma unroll
   for (int i = 0; i < D; i++) {
     int data_idx = i * 6;
-    output.cols[i].vec[0].x = data[data_idx + 0];
-    output.cols[i].vec[0].y = data[data_idx + 1];
-    output.cols[i].vec[0].z = data[data_idx + 2];
-    output.cols[i].vec[0].w = data[data_idx + 3];
-    output.cols[i].vec[1].x = data[data_idx + 4];
-    output.cols[i].vec[1].y = data[data_idx + 5];
-    output.cols[i].vec[1].z = 0.0f;
-    output.cols[i].vec[1].w = 0.0f;
+    output.data[i][0] = data[data_idx + 0];
+    output.data[i][1] = data[data_idx + 1];
+    output.data[i][2] = data[data_idx + 2];
+    output.data[i][3] = data[data_idx + 3];
+    output.data[i][4] = data[data_idx + 4];
+    output.data[i][5] = data[data_idx + 5];
   }
 
   return output;
@@ -166,22 +163,20 @@ Mat6xD<D> scaled_identity(float scale) {
 
   #pragma unroll
   for (int i = 0; i < D; i++) {
-    output.cols[i].vec[0].x = 0.0f;
-    output.cols[i].vec[0].y = 0.0f;
-    output.cols[i].vec[0].z = 0.0f;
-    output.cols[i].vec[0].w = 0.0f;
-    output.cols[i].vec[1].x = 0.0f;
-    output.cols[i].vec[1].y = 0.0f;
-    output.cols[i].vec[1].z = 0.0f;
-    output.cols[i].vec[1].w = 0.0f;
+    output.data[i][0] = 0.0f;
+    output.data[i][1] = 0.0f;
+    output.data[i][2] = 0.0f;
+    output.data[i][3] = 0.0f;
+    output.data[i][4] = 0.0f;
+    output.data[i][5] = 0.0f;
   }
 
-  output.cols[0].vec[0].x = scale;
-  output.cols[1].vec[0].y = scale;
-  output.cols[2].vec[0].z = scale;
-  output.cols[3].vec[0].w = scale;
-  output.cols[4].vec[1].x = scale;
-  output.cols[5].vec[1].y = scale;
+  output.data[0][0] = scale;
+  output.data[1][1] = scale;
+  output.data[2][2] = scale;
+  output.data[3][3] = scale;
+  output.data[4][4] = scale;
+  output.data[5][5] = scale;
 
   return output;
 }
@@ -194,14 +189,14 @@ using VecT = VecD<NUM_JOINTS>;
 using Vec6 = VecD<6>;
 
 // Compute the torque for dimension i
-__device__ __host__ float compute_torque_i(const Mat6Col col, const Vec6 f) {
+__device__ __host__ float compute_torque_i(const float* col, const Vec6 f) {
 
-  return col.vec[0].x * f.vec[0] + \
-      col.vec[0].y * f.vec[1] + \
-      col.vec[0].z * f.vec[2] + \
-      col.vec[0].w * f.vec[3] + \
-      col.vec[1].x * f.vec[4] + \
-      col.vec[1].y * f.vec[5];
+  return col[0] * f.vec[0] + \
+      col[1] * f.vec[1] + \
+      col[2] * f.vec[2] + \
+      col[3] * f.vec[3] + \
+      col[4] * f.vec[4] + \
+      col[5] * f.vec[5];
 }
  
 __global__
@@ -219,8 +214,87 @@ void batched_torques(
   for (int config_idx = index; config_idx < num_configs; config_idx += stride) {
     for (int force_idx = 0; force_idx < NUM_FORCES; force_idx++) {
       int result_id = config_idx * NUM_FORCES + force_idx;
-      t[result_id].vec[col] = compute_torque_i(j[config_idx].cols[col], f[force_idx]);
+      t[result_id].vec[col] = compute_torque_i(j[config_idx].data[col], f[force_idx]);
     }
+  }
+}
+
+const int WARP_SIZE = 32;
+const int BLOCK_SIZE_X = 256;
+ 
+__global__
+void wmma_batched_torques(
+  int num_configs,
+  const MatJ* __restrict__ j,
+  const Vec6*__restrict__ f,
+  VecT*__restrict__ t)
+{
+  __shared__ half a_smem[BLOCK_SIZE_X / WARP_SIZE][16][16+8];
+  __shared__ half b_smem[16][16+8];
+  __shared__ float c_smem[BLOCK_SIZE_X / WARP_SIZE][16][16+8];
+
+  // One config per warp
+  int index = (blockIdx.x * blockDim.x + threadIdx.x) / WARP_SIZE;
+  int stride = (blockDim.x * gridDim.x) / WARP_SIZE;
+
+  // Load the forces into a shared buffer
+  // There are at leasst 256 threads per block on the x dim
+  int sid = threadIdx.x;
+  if (sid < 256) {
+    int s_col = sid / 16;
+    int s_row = sid % 16;
+
+    if (s_col < NUM_FORCES && s_row < 6) {
+      b_smem[s_col][s_row] = f[s_col].vec[s_row];
+    } else {
+      b_smem[s_col][s_row] = __float2half(0.0f);
+    }
+  }
+  __syncthreads();
+
+  wmma::fragment<wmma::matrix_b, 16, 16, 16, half, wmma::col_major> b_frag;
+  wmma::load_matrix_sync(b_frag, &b_smem[0][0], 24);
+
+  // ID of this warp inside it's block
+  int inter_warp_id = sid / WARP_SIZE;
+  // ID of this thread inside it's warp
+  int intra_warp_id = sid % WARP_SIZE;
+
+  for (int config_idx = index; config_idx < num_configs; config_idx += stride) {
+    // Load a_frag data
+    for (int wid = intra_warp_id; wid < 256; wid += WARP_SIZE) {
+      int s_col = wid / 16;
+      int s_row = wid % 16;
+
+      if (s_col < 6 && s_row < NUM_JOINTS) {
+        a_smem[inter_warp_id][s_col][s_row] = j[config_idx].data[s_row][s_col];
+      } else {
+        a_smem[inter_warp_id][s_col][s_row] = __float2half(0.0f);
+      }
+    }
+
+    __syncwarp();
+
+    wmma::fragment<wmma::matrix_a, 16, 16, 16, half, wmma::col_major> a_frag;
+    wmma::load_matrix_sync(a_frag, &a_smem[inter_warp_id][0][0], 24);
+
+    wmma::fragment<wmma::accumulator, 16, 16, 16, float> c_frag;
+    wmma::fill_fragment(c_frag, 0.0f);
+
+    wmma::mma_sync(c_frag, a_frag, b_frag, c_frag);
+
+    wmma::store_matrix_sync(&c_smem[inter_warp_id][0][0], c_frag, 24, wmma::mem_col_major);
+
+    // Store c_frag data
+    for (int wid = intra_warp_id; wid < NUM_FORCES * NUM_JOINTS; wid += WARP_SIZE) {
+      int force_id = wid / NUM_JOINTS;
+      int result_force_id = force_id + config_idx * NUM_FORCES;
+      int component = wid % NUM_JOINTS;
+
+      t[result_force_id].vec[component] = c_smem[inter_warp_id][force_id][component];
+    }
+
+    __syncwarp();
   }
 }
 
@@ -252,9 +326,18 @@ void test_program_correct() {
   f.copy_to_device();
   t.copy_to_device();
 
-  dim3 block(NUM_JOINTS, BLOCK_DIM_Y, 1);
-  dim3 grid(1, (num_matrices + block.y - 1) / block.y, 1);
-  batched_torques<<<grid, block>>>(
+  // dim3 block(NUM_JOINTS, BLOCK_DIM_Y, 1);
+  // dim3 grid(1, (num_matrices + block.y - 1) / block.y, 1);
+  // batched_torques<<<grid, block>>>(
+  //   num_matrices,
+  //   j.device,
+  //   f.device,
+  //   t.device
+  // );
+
+  dim3 block(BLOCK_SIZE_X, 1, 1);
+  dim3 grid((num_matrices + block.x - 1) / block.x, 1, 1);
+  wmma_batched_torques<<<grid, block>>>(
     num_matrices,
     j.device,
     f.device,
@@ -334,8 +417,8 @@ long run_program() {
  
 int main(int argc, char* argv[])
 {
-  //test_program_correct();
-  //return 0;
+  test_program_correct();
+  return 0;
 
   // warm up
   int numWarmups = 0;
