@@ -17,6 +17,7 @@
 #include "cublas_v2.h"
 
 const int NUM_JOINTS = 7;
+const int NUM_FORCES = 16;
 const int BLOCK_DIM_Y = 64;
 
 __host__ __device__ inline bool nearlyEqual(float a, float b, float eps = 1e-5f) {
@@ -193,9 +194,8 @@ using VecT = VecD<NUM_JOINTS>;
 using Vec6 = VecD<6>;
 
 // Compute the torque for dimension i
-__device__ __host__ float compute_torque(const MatJ J, const Vec6 f, const int i) {
+__device__ __host__ float compute_torque_i(const Mat6Col col, const Vec6 f) {
 
-  Mat6Col col = J.cols[i];
   return col.vec[0].x * f.vec[0] + \
       col.vec[0].y * f.vec[1] + \
       col.vec[0].z * f.vec[2] + \
@@ -206,7 +206,7 @@ __device__ __host__ float compute_torque(const MatJ J, const Vec6 f, const int i
  
 __global__
 void batched_torques(
-  int n,
+  int num_configs,
   const MatJ* __restrict__ j,
   const Vec6*__restrict__ f,
   VecT*__restrict__ t)
@@ -214,9 +214,13 @@ void batched_torques(
   int col = threadIdx.x;
   int index = blockIdx.y * blockDim.y + threadIdx.y;
   int stride = blockDim.y * gridDim.y;
+  //int force_idx = threadIdx.z;
   
-  for (int i = index; i < n; i += stride) {
-    t[i].vec[col] = compute_torque(j[i], f[i], col);
+  for (int config_idx = index; config_idx < num_configs; config_idx += stride) {
+    for (int force_idx = 0; force_idx < NUM_FORCES; force_idx++) {
+      int result_id = config_idx * NUM_FORCES + force_idx;
+      t[result_id].vec[col] = compute_torque_i(j[config_idx].cols[col], f[force_idx]);
+    }
   }
 }
 
@@ -225,8 +229,8 @@ void test_program_correct() {
   int num_matrices = 3;
 
   Buffers<MatJ> j(num_matrices);
-  Buffers<Vec6> f(num_matrices);
-  Buffers<VecT> t(num_matrices);
+  Buffers<Vec6> f(NUM_FORCES);
+  Buffers<VecT> t(num_matrices * NUM_FORCES);
 
   for (int i = 0; i < num_matrices; i++) {
     j.host[i] = build_mat6xd<NUM_JOINTS>({
@@ -238,6 +242,9 @@ void test_program_correct() {
       4,  1,  7,  9,  1,   6,
       1,  0,  0,  0,  0,   1,
     });
+  }
+
+  for (int i = 0; i < NUM_FORCES; i++) {
     f.host[i] = build_vecd<6>({static_cast<float>(1. + i), 2., 3., 4., 5., 6.});
   }
 
@@ -254,21 +261,35 @@ void test_program_correct() {
     t.device
   );
 
+  cudaError_t launch_err = cudaGetLastError();
+  if (launch_err != cudaSuccess)
+      std::cerr << "launch: " << cudaGetErrorString(launch_err) << "\n";
+  cudaError_t sync_err = cudaDeviceSynchronize();
+  if (sync_err != cudaSuccess)
+      std::cerr << "exec: " << cudaGetErrorString(sync_err) << "\n";
+
   t.copy_to_host();
 
-  for (int i = 0; i < num_matrices; i++) {
-    VecT out = t.host[i];
-    VecT expected = build_vecd<NUM_JOINTS>({
-      static_cast<float>(1 + -1 * i),
-      static_cast<float>(77 + 2 * i),
-      static_cast<float>(-2 + 2 * i),
-      static_cast<float>(86 + 2 * i),
-      static_cast<float>(83 + 3 * i),
-      static_cast<float>(104 + 4 * i),
-      static_cast<float>(7 + 1 * i),
-    });
-    
-    assert(nearlyEqual(out, expected));
+  for (int config_idx = 0; config_idx < num_matrices; config_idx++) {
+    for (int force_idx = 0; force_idx < NUM_FORCES; force_idx++) {
+      int result_id = config_idx * NUM_FORCES + force_idx;
+      //std::cout << "Fetching: " << result_id << "\n";
+      VecT out = t.host[result_id];
+      VecT expected = build_vecd<NUM_JOINTS>({
+        static_cast<float>(1 + -1 * force_idx),
+        static_cast<float>(77 + 2 * force_idx),
+        static_cast<float>(-2 + 2 * force_idx),
+        static_cast<float>(86 + 2 * force_idx),
+        static_cast<float>(83 + 3 * force_idx),
+        static_cast<float>(104 + 4 * force_idx),
+        static_cast<float>(7 + 1 * force_idx),
+      });
+
+      //std::cout << "Actual: " << out.vec[0] << ", " << out.vec[1] << ", " << out.vec[2] << ", " << out.vec[3] << ", " << out.vec[4] << ", " << out.vec[5] << "\n";
+      //std::cout << "Expected: " << expected.vec[0] << ", " << expected.vec[1] << ", " << expected.vec[2] << ", " << expected.vec[3] << ", " << expected.vec[4] << ", " << expected.vec[5] << "\n";
+      
+      assert(nearlyEqual(out, expected));
+    }
   }
 }
 
@@ -277,13 +298,15 @@ long run_program() {
   int num_matrices = 320000;
 
   Buffers<MatJ> j(num_matrices);
-  Buffers<Vec6> f(num_matrices);
-  Buffers<VecT> t(num_matrices);
+  Buffers<Vec6> f(NUM_FORCES);
+  Buffers<VecT> t(num_matrices * NUM_FORCES);
 
   for (int i = 0; i < num_matrices; i++) {
     j.host[i] = sample_mat6xd<NUM_JOINTS>();
+  }
+
+  for (int i = 0; i < NUM_FORCES; i++) {
     f.host[i] = sample_vecd<6>();
-    t.host[i] = sample_vecd<NUM_JOINTS>();
   }
 
   j.copy_to_device();
@@ -292,7 +315,7 @@ long run_program() {
 
   auto start = std::chrono::steady_clock::now();
 
-  dim3 block(6, BLOCK_DIM_Y, 1);
+  dim3 block(NUM_JOINTS, BLOCK_DIM_Y, 1);
   dim3 grid(1, (num_matrices + block.y - 1) / block.y, 1);
   batched_torques<<<grid, block>>>(
     num_matrices,
@@ -311,16 +334,17 @@ long run_program() {
  
 int main(int argc, char* argv[])
 {
-  test_program_correct();
+  //test_program_correct();
+  //return 0;
 
   // warm up
-  int numWarmups = 3;
+  int numWarmups = 0;
   for(int i = 0; i < numWarmups; i++) {
     run_program();
   }
 
   long totalCustomMicroseconds = 0;
-  int numRuns = 10;
+  int numRuns = 1;
   for(int i = 0; i < numRuns; i++) {
     long time = run_program();
     totalCustomMicroseconds += time;
